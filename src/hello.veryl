@@ -1,0 +1,122 @@
+package FP {
+    const sign_bits: u8 = 1;
+    const exp_bits : u8 = 8;
+    const man_bits : u8 = 23;
+    struct fp_num {
+        s: logic<sign_bits>,
+        e: logic<exp_bits> ,
+        m: logic<man_bits> ,
+    }
+}
+module fp_testbench () {
+    import FP::*;
+    let a: f32 = 66;
+    let b: f32 = 31;
+    inst umod_fp_unit: fp_unit (
+        X  : (a as fp_num),
+        Y  : (b as fp_num),
+        clk: 0            ,
+        rst: 0            ,
+    );
+}
+module fp_unit (
+    X  : input  fp_num,
+    Y  : input  fp_num,
+    out: output fp_num,
+    clk: input  clock ,
+    rst: input  reset ,
+) {
+    import FP::*;
+
+    enum FPU_state: u8 {
+        idle,
+        work,
+        done,
+    }
+
+    let state: FPU_state = FPU_state::idle;
+
+    function add (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        ////////////
+        //// fp addition:
+        ////////////
+        // align points by shifting the bigger mantissa one down
+        // sum aligned mantissas
+
+        var scaled: u32   ;
+        var m_sum : u32   ;
+        var e_sum : i32   ;
+        var sum   : fp_num;
+
+        $display("every ");
+        let diff    : signed logic<exp_bits> = X.e - Y.e;
+        if (diff >: 0) {
+            scaled = X.m as u32 >> diff;
+            m_sum  = scaled + Y.m as u32;
+            e_sum  = Y.e as i32 - 127;
+
+        } else {
+            scaled = Y.m as u32 >> -diff;
+            m_sum  = scaled + X.m as u32;
+            e_sum  = X.e as i32 - 127;
+        }
+
+        $display("spingle ");
+        /// normalize the sum: ensure the "secret bit" beyond the mantissa is 1
+        if (m_sum >= (2 << man_bits)) {
+            $display("... single ");
+            // shift right, inc exponent
+            m_sum =  m_sum >> 1;
+            e_sum += 1;
+        } else {
+            for i: i32 in 0..100 { //NOTE: while loop please
+                if (m_sum <: (1 << man_bits) && e_sum >: 0) {
+                    // mantissa too small, move up
+                    // shift left, dec exponent until done
+                    $display("... loop");
+                    m_sum    =  m_sum << 1;
+                    e_sum    -= 1;
+                }
+            }
+        }
+
+        // now we check that all the bits fit and other edge cases
+        e_sum += 127;
+        if (e_sum >= (2 ** exp_bits)) {
+            $display("overflow", sum);
+            return 69 as fp_num;
+        } else if (e_sum <: 0) {
+            $display("underflow", sum);
+            return 69 as fp_num;
+        } else if (m_sum == 0) {
+            //if result mantissa is 0, set result exp to 0
+            return 0 as fp_num;
+        }
+
+        // truncate and package
+        sum.m    = m_sum[man_bits - 1:0];
+        sum.e    = e_sum[exp_bits - 1:0];
+        $display("Hello, from Add! %d", sum);
+        return sum;
+
+    }
+
+    initial {
+
+        let a : fp_num = (X + Y) as fp_num;
+        let aa: fp_num = add(X, Y);
+
+        $display("Hello, FPU! %f + %f = %f", X, Y, a as f32);
+
+        $display("Hello, FPU! %b, %b, %b", a.s, a.e, a.m);
+
+        $display("Hello, FPU! %f", aa as f32);
+        $display("Hello, FPU! %b, %b, %b", aa.s, aa.e, aa.m);
+        $display("Hello, FPU! %b", aa);
+
+    }
+
+}
