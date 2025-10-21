@@ -1,0 +1,6 @@
+install:
+- veryl (use verylup, or follow instructions on website)
+- cocotb (i used pacman)
+- verilator (also pacman)
+
+veryl build && make -f Makefile_CocoTB

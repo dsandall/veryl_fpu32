@@ -1,3 +1,7 @@
+embed (inline) sv{{{
+  /*verilator lint_off WIDTHEXPAND*/
+}}}
+
 package FP {
     const sign_bits: u8 = 1;
     const exp_bits : u8 = 8;

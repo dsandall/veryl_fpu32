@@ -1,5 +1,5 @@
 [project]
-name = "hello"
+name = "veryl_fpu"
 version = "0.1.0"
 [build]
 source = "src"
@@ -7,6 +7,12 @@ target = { type = "directory", path = "target" }
 
 [test]
 simulator = "verilator"
-[test.verilator]
-#compile_args = -Wno-SHORTREAL-Wno-WIDTHTRUNC"
 
+[test.verilator]
+#compile_args = [
+#  "-Wno-UNOPTFLAT",
+#  "-Wno-REALCVT",
+#  "-Wno-SHORTREAL",
+#  "-Wno-UNUSED",
+#  "-Wno-WIDTHEXPAND",
+#]
