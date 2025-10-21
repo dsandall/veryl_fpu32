@@ -1,1 +1,10 @@
+dependencies/
+target/
+Veryl.lock
+hello.f
+
 .build/
+obj_dir/
+sim_build/
+results.xml
+__pycache__/

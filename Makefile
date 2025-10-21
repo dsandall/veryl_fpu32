@@ -1,4 +1,4 @@
-# Makefile
+# Makefile, for cocotb
 
 # defaults
 TOPLEVEL_LANG ?= verilog
