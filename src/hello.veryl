@@ -7,35 +7,20 @@ package FP {
         e: logic<exp_bits> ,
         m: logic<man_bits> ,
     }
-}
-module fp_testbench () {
-    import FP::*;
-    let a: f32 = 66;
-    let b: f32 = 31;
-    inst umod_fp_unit: fp_unit (
-        X  : (a as fp_num),
-        Y  : (b as fp_num),
-        clk: 0            ,
-        rst: 0            ,
-    );
-}
-module fp_unit (
-    X  : input  fp_num,
-    Y  : input  fp_num,
-    out: output fp_num,
-    clk: input  clock ,
-    rst: input  reset ,
-) {
-    import FP::*;
 
-    enum FPU_state: u8 {
-        idle,
-        work,
-        done,
-    }
+    //function add_check (
+    //    X: input fp_num,
+    //    Y: input fp_num,
+    //) -> fp_num {
+    //    let Z: f32 = add(X, Y) as f32;
+    //    if (Z == X as f32 + Y as f32) {
+    //        $display("pass");
+    //    } else {
+    //        $display("X - %f, %f = %f (actual %f)", X, Y, Z, X + Y);
+    //    }
 
-    let state: FPU_state = FPU_state::idle;
-
+    //    return Z;
+    //}
     function add (
         X: input fp_num,
         Y: input fp_num,
@@ -46,77 +31,214 @@ module fp_unit (
         // align points by shifting the bigger mantissa one down
         // sum aligned mantissas
 
-        var scaled: u32   ;
-        var m_sum : u32   ;
-        var e_sum : i32   ;
-        var sum   : fp_num;
+        var m_sum   : u32   ;
+        var e_sum   : i32   ;
+        var sum     : fp_num;
+        $display("x = %d, %d, %d", X.s, X.e, X.m);
+        $display("y = %d, %d, %d", Y.s, Y.e, Y.m);
 
-        $display("every ");
-        let diff    : signed logic<exp_bits> = X.e - Y.e;
-        if (diff >: 0) {
-            scaled = X.m as u32 >> diff;
-            m_sum  = scaled + Y.m as u32;
-            e_sum  = Y.e as i32 - 127;
+        e_sum = if Y.e >: X.e ? Y.e : X.e;
 
-        } else {
-            scaled = Y.m as u32 >> -diff;
-            m_sum  = scaled + X.m as u32;
-            e_sum  = X.e as i32 - 127;
+        var Am      : u32;
+        var Bm      : u32;
+        var Ae      : i32;
+        var Be      : i32;
+        var As      : u32;
+        var Bs      : u32;
+        Am       = X.m;
+        Bm       = Y.m;
+        Ae       = X.e - 127;
+        Be       = Y.e - 127;
+        As       = X.s;
+        Bs       = Y.s;
+        $display("A = %d, %d, %d", As, Ae, Am);
+        $display("B = %d, %d, %d", Bs, Be, Bm);
+
+        if (Be >: Ae) {
+            // swap so A has larger exponent
+            Am = Y.m;
+            Bm = X.m;
+            Ae = Y.e - 127;
+            Be = X.e - 127;
+            As = Y.s;
+            Bs = X.s;
+        }
+        // normalize the sum: ensure the "secret bit" beyond the mantissa is 1
+        // add the implicit leading one on mantissas
+
+        if (Ae != -127) {
+            Am = Am | (1 << man_bits);
+        }
+        if (Be != -127) {
+            Bm = Bm | (1 << man_bits);
         }
 
-        $display("spingle ");
-        /// normalize the sum: ensure the "secret bit" beyond the mantissa is 1
-        if (m_sum >= (2 << man_bits)) {
-            $display("... single ");
+        let diff    : u32 = Ae - Be;
+        $display("A = %d, %d, %d", As, Ae, Am);
+        $display("B = %d, %d, %d", Bs, Be, Bm);
+        if (diff == 0) {
+            $display("diff zero", diff);
+            m_sum    = Am + Bm;
+            e_sum    = Be;
+        } else if (diff >: 0) {
+            // X bigger num
+            $display("A much bigger", diff);
+            m_sum    = (Bm >> diff) + Am;
+            e_sum    = Ae;
+        }
+        // truncate and package
+        $display("output 1: %d, %d, %d", sum.s, e_sum, m_sum);
+
+        if (m_sum >= (1 << (man_bits + 1))) {
+            $display("normalize once", m_sum);
             // shift right, inc exponent
             m_sum =  m_sum >> 1;
             e_sum += 1;
         } else {
             for i: i32 in 0..100 { //NOTE: while loop please
-                if (m_sum <: (1 << man_bits) && e_sum >: 0) {
+                if (m_sum <: (1 << man_bits) && e_sum >: -126) {
+                    $display("normalize loop", m_sum);
                     // mantissa too small, move up
                     // shift left, dec exponent until done
-                    $display("... loop");
-                    m_sum    =  m_sum << 1;
-                    e_sum    -= 1;
+                    m_sum =  m_sum << 1;
+                    e_sum -= 1;
                 }
             }
         }
+        // truncate and package
+        e_sum    += 127;
+        sum.m    =  m_sum[man_bits - 1:0];
+        sum.e    =  e_sum[exp_bits - 1:0];
+        $display("output 1.5: %d, %d, %d", sum.s, sum.e, sum.m);
+
+        // remove implicit 1 again before storing mantissa (only if normalized)
+        if (e_sum != 0 && ((m_sum & (1 << man_bits)) != 0)) {
+            m_sum = m_sum & ((1 << man_bits) - 1);
+        }
+
+        sum.m    = m_sum[man_bits - 1:0];
+        sum.e    = e_sum[exp_bits - 1:0];
+        $display("output 2: %d, %d, %d", sum.s, sum.e, sum.m);
 
         // now we check that all the bits fit and other edge cases
-        e_sum += 127;
         if (e_sum >= (2 ** exp_bits)) {
             $display("overflow", sum);
-            return 69 as fp_num;
+            return 69.0 as fp_num;
         } else if (e_sum <: 0) {
             $display("underflow", sum);
-            return 69 as fp_num;
-        } else if (m_sum == 0) {
-            //if result mantissa is 0, set result exp to 0
-            return 0 as fp_num;
+            return 69.0 as fp_num;
+            //} else if (m_sum == 0) {
+            //    //if result mantissa is 0, set result exp to 0
+            //    $display("true zero", sum);
+            //    return 0 as fp_num;
         }
 
         // truncate and package
+
         sum.m    = m_sum[man_bits - 1:0];
         sum.e    = e_sum[exp_bits - 1:0];
-        $display("Hello, from Add! %d", sum);
+        $display("output fin: %d, %d, %d", sum.s, sum.e, sum.m);
+
         return sum;
 
     }
 
-    initial {
+}
 
-        let a : fp_num = (X + Y) as fp_num;
-        let aa: fp_num = add(X, Y);
+//#[test(test1, ModuleA)]
+//embed (cocotb) py{{{
+//    # cocotb code
+//    print("hi");
+//}}}
 
-        $display("Hello, FPU! %f + %f = %f", X, Y, a as f32);
+//module fp_testbench_wrap (
+//    X      : input  logic<32>,
+//    Y      : input  logic<32>,
+//    out    : output logic<32>,
+//    i_clk  : input  clock    ,
+//    i_rst  : input  reset    ,
+//    i_start: input  logic    ,
+//    i_done : output logic    ,
+//) {
+//    import FP::*;
+//    inst umod_fp_unit: fp_unit (
+//        X        ,
+//        Y        ,
+//        out      ,
+//        i_clk    ,
+//        i_done   ,
+//        i_rst    ,
+//        i_start  ,
+//    );
+//    always_ff {
+//        $display("done:%d", i_done);
+//
+//    }
+//
+//}
 
-        $display("Hello, FPU! %b, %b, %b", a.s, a.e, a.m);
+module fp_unit (
+    X      : input  logic<32>,
+    Y      : input  logic<32>,
+    out    : output logic<32>,
+    i_clk  : input  clock    ,
+    i_rst  : input  reset    ,
+    i_start: input  logic    ,
+    i_done : output logic    ,
+) {
+    import FP::*;
 
-        $display("Hello, FPU! %f", aa as f32);
-        $display("Hello, FPU! %b, %b, %b", aa.s, aa.e, aa.m);
-        $display("Hello, FPU! %b", aa);
+    var add_res: logic<32>;
 
+    let Xx: fp_num = X;
+    let Yy: fp_num = Y;
+
+    enum FPU_state: u8 {
+        idle,
+        work,
+        done,
     }
 
+    var state: FPU_state;
+
+    always_ff {
+        if_reset {
+            $display("reset hit!");
+            state    = FPU_state::idle;
+        } else if i_start {
+            $display("start hit!");
+            if (state == FPU_state::idle) {
+                add_res = add(X, Y);
+                state   = FPU_state::work;
+            } else if (state == FPU_state::work) {
+                out    = add_res;
+                i_done = 1;
+                state  = FPU_state::idle;
+            }
+        } else {
+            $display("no start hit!");
+
+            //            if (state == FPU_state::idle) {
+            //
+            //
+            //            } else if (state == FPU_state::work) {
+            //                //TODO:
+            //            } else if (state == FPU_state::done) {
+            //                //TODO:
+            //                //i_done = 1;
+            //            }
+
+            //    $display("Testbench done200.");
+
+
+            //let a : fp_num = (X + Y) as fp_num;
+
+            //$display("Hello, FPU! %f + %f = %f", X, Y, a as f32);
+            //$display("Hello, FPU! %b, %b, %b", a.s, a.e, a.m);
+
+            //$display("Hello, FPU! %f", aa as f32);
+            //$display("Hello, FPU! %b, %b, %b", aa.s, aa.e, aa.m);
+        }
+
+    }
 }
