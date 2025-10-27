@@ -1,6 +1,14 @@
-install:
+#install:
 - veryl (use verylup, or follow instructions on website)
 - cocotb (i used pacman)
 - verilator (also pacman)
 
 veryl build && make -f Makefile_CocoTB
+
+
+
+
+
+##docs
+https://docs.riscv.org/reference/isa/_attachments/riscv-unprivileged.pdf
+chapter 20 ^ extension F, single precision floating point

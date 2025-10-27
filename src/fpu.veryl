@@ -13,6 +13,23 @@ package FP {
         m: logic<man_bits> ,
     }
 
+    enum round_mode: logic<3> {
+        RNE = 0,
+        RTZ = 1,
+        RDN = 2,
+        RUP = 3,
+        RMM = 4,
+        DYN = 7,
+    }
+
+    struct err_flags {
+        NV: logic,
+        DZ: logic,
+        OF: logic,
+        UF: logic,
+        NX: logic,
+    }
+
     function subtract (
         X: input fp_num,
         Y: input fp_num,
@@ -29,6 +46,7 @@ package FP {
         Y: input fp_num,
     ) -> fp_num {
 
+        $display("ADD BEGIN");
         $display("x = %d, %d, %d", X.s, X.e, X.m);
         $display("y = %d, %d, %d", Y.s, Y.e, Y.m);
         ////////////
@@ -78,36 +96,49 @@ package FP {
         var e_sum: i32   ;
         var sum  : fp_num;
 
-        e_sum = Ae;
 
         // Determine addition or subtraction of mantissas
         if (As == Bs) {
             // same sign → add
-            m_sum = Am + Bm_shifted;
-            sum.s = As;
+            $display("same sign, add");
+            m_sum    = Am + Bm_shifted;
+            sum.s    = As;
         } else {
             // opposite signs → subtract
-            if (Am >= Bm_shifted) {
-                m_sum = Am - Bm_shifted;
-                sum.s = As; // A had larger magnitude
+            if (Am == Bm_shifted) {
+                $display("self - self = 0");
+                // same equalized mantissas
+                // -> +-0
+                sum.e = 0;
+                sum.m = 0;
+                return sum;
+            } else if (Am >: Bm_shifted) {
+                $display("diff signs, A is bigger");
+                m_sum    = Am - Bm_shifted;
+                sum.s    = As; // A had larger magnitude
             } else {
-                m_sum = Bm_shifted - Am;
-                sum.s = Bs; // B had larger magnitude
+                $display("diff signs, B is bigger");
+                m_sum    = Bm_shifted - Am;
+                sum.s    = Bs; // B had larger magnitude
             }
         }
-
         $display("output 1: %d, %d, %d", sum.s, e_sum, m_sum);
 
-        // if mantissa too large,
+        // Restore implied Exp offset
+        e_sum =  Ae;
+        e_sum += 127;
+
+        // if mantissa too large (larger than the implicit 1)
         if (m_sum >= (1 << (man_bits + 1))) {
             $display("normalize once", m_sum);
             // shift right, inc exponent
             m_sum =  m_sum >> 1;
             e_sum += 1;
         } else {
-            // if mantissa too small,
-            for i: i32 in 0..100 { //NOTE: while loop please
-                if (m_sum <: (1 << man_bits) && e_sum >: -126) {
+            // if mantissa too small, (no implicit one exists yet)
+            for i: i32 in 0..man_bits { //NOTE: while loop please
+                // m_sum less than the implicit leading one AND e_sum not abs min.
+                if (m_sum <: (1 << man_bits) && e_sum >: 0) {
                     $display("normalize loop", m_sum);
                     // mantissa too small, move up
                     // shift left, dec exponent until done
@@ -117,15 +148,6 @@ package FP {
             }
         }
 
-        // Restore implied Exp offset
-        e_sum += 127;
-        // Restore implied Mantessa leading 1
-        // (only if normalized)
-        if (e_sum != 0 && ((m_sum & (1 << man_bits)) != 0)) {
-            m_sum = m_sum & ((1 << man_bits) - 1);
-        }
-
-        $display("output 2: %d, %d, %d", sum.s, e_sum, m_sum);
 
         // now we check that all the bits fit and other edge cases
         if (e_sum >= (2 ** exp_bits) - 1) {
@@ -154,7 +176,10 @@ module fp_unit (
     i_clk  : input  clock    ,
     i_rst  : input  reset    ,
     i_start: input  logic    ,
-    i_done : output logic    ,
+    o_done : output logic    ,
+    // Refer to RV ext F spec
+    i_round: input  round_mode,
+    o_flags: output err_flags ,
 ) {
     import FP::*;
 
@@ -184,7 +209,7 @@ module fp_unit (
                     $display("working");
                     out      = add_res;
                     $display("output is %f", add_res);
-                    i_done   = 1;
+                    o_done   = 1;
                     state    = FPU_state::done;
                 }
                 FPU_state::done: {
@@ -192,7 +217,7 @@ module fp_unit (
                         $display("done, waiting for ack");
                     } else {
                         $display("done, ack complete");
-                        i_done   = 0;
+                        o_done   = 0;
                         state    = FPU_state::idle;
                     }
                 }

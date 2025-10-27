@@ -38,19 +38,18 @@ async def check_fp_sum(dut, x: float, y: float):
 
     # Wait for done
     try:
-        await with_timeout(RisingEdge(dut.i_done), timeout, "ns")
+        await with_timeout(RisingEdge(dut.o_done), timeout, "ns")
     except SimTimeoutError:
         out_float = bits_to_float(int(dut.out.value))
         expected = np.float32(x) + np.float32(y)
         cocotb.log.info(
             f"Timeout: X={x}, Y={y}, DUT out={out_float}, expected={expected}"
         )
-        raise AssertionError("Timeout: i_done never asserted")
+        raise AssertionError("Timeout: o_done never asserted")
 
     # Compare results
     out_float = bits_to_float(int(dut.out.value))
     expected = np.float32(x) + np.float32(y)
-
     cocotb.log.info(f"X={x}, Y={y}, DUT out={out_float}, expected={expected}")
 
     # Handle inf / nan safely
@@ -61,7 +60,7 @@ async def check_fp_sum(dut, x: float, y: float):
             f"Expected {expected}, got {out_float}"
         )
     else:
-        assert abs(out_float - expected) < 1e-6, (
+        assert abs(out_float - expected) == 0.0, (
             f"XXXXX\nGot {out_float}, expected {expected}"
         )
 
@@ -124,23 +123,23 @@ async def my_fp_sum_test(dut):
         (-1234.567, 1234.567),
     ]
 
-    # super_tests = [
-    #    # Exact cancellation / large magnitude diff
-    #    (1.234e20, -1.234e20),
-    #    (3.4e38, -3.4e38),
-    #    # Infinity / NaN behavior
-    #    (float("inf"), 1.0),
-    #    (-float("inf"), 1.0),
-    #    (float("inf"), -float("inf")),
-    #    (float("nan"), 1.0),
-    #    (1.0, float("nan")),
-    #    (float("nan"), float("nan")),
-    # ]
+    super_tests = [
+        # Exact cancellation / large magnitude diff
+        (1.234e20, -1.234e20),
+        (3.4e38, -3.4e38),
+        # Infinity / NaN behavior
+        (float("inf"), 1.0),
+        (-float("inf"), 1.0),
+        (float("inf"), -float("inf")),
+        (float("nan"), 1.0),
+        (1.0, float("nan")),
+        (float("nan"), float("nan")),
+    ]
 
     for x, y in test_vectors:
         await check_fp_sum(dut, x, y)
         await Timer(3, "ns")  # small delay between tests
 
-    # for x, y in super_tests:
-    #    await check_fp_sum(dut, x, y)
-    #    await Timer(3, "ns")  # small delay between tests
+    for x, y in super_tests:
+        await check_fp_sum(dut, x, y)
+        await Timer(3, "ns")  # small delay between tests
