@@ -1,0 +1,215 @@
+import FPdefs::*;
+
+package Add {
+
+    function add (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        ////////////
+        //// fp addition:
+        ////////////
+
+        var sum: fp_num;
+
+        $display("ADD BEGIN");
+        $display("x = %d, %d, %d", X.s, X.e, X.m);
+        $display("y = %d, %d, %d", Y.s, Y.e, Y.m);
+
+
+        // select larger magnitude, put at A
+        var Am: u32     ;
+        var Bm: u32     ;
+        var Ae: i32     ;
+        var Be: i32     ;
+        var As: logic<1>;
+        var Bs: logic<1>;
+        if (X.e >: Y.e) {
+            Am = X.m;
+            Bm = Y.m;
+            Ae = X.e;
+            Be = Y.e;
+            As = X.s;
+            Bs = Y.s;
+
+        } else {
+            Am = Y.m;
+            Bm = X.m;
+            Ae = Y.e;
+            Be = X.e;
+            As = Y.s;
+            Bs = X.s;
+        }
+
+
+        // check for infinities or NaNs
+        if (Ae == 255) {
+            if (Am != 0) {
+                // a is NaN
+                $display("a is NaN");
+                return canonNaN;
+            } else {
+                // a is inf
+                if (Be == 255 && Bm == 0) {
+                    if (As != Bs) {
+                        // inf - inf = NaN
+                        $display("diff of infinities");
+                        return canonNaN;
+                    }
+                }
+                // answer is inf
+                sum.e    = Ae;
+                sum.s    = As;
+                sum.m    = Am;
+                $display("A is inf");
+                return sum;
+            }
+        }
+
+        if (Be == 255) {
+            if (Bm != 0) {
+                // b is NaN
+                $display("b is NaN");
+                return canonNaN;
+            } else {
+                // b is inf
+                if (Ae == 255 && Am == 0) {
+                    if (Bs != As) {
+                        // inf - inf = NaN
+                        $display("diff of infinities");
+                        return canonNaN;
+                    }
+                }
+                // answer is inf
+                sum.e    = Be;
+                sum.m    = Bm;
+                sum.s    = Bs;
+                $display("B is inf");
+                return sum;
+            }
+        }
+
+        ////////////////////////
+        // Now we can treat them like real numbers
+        ////////////////////////
+
+        // normalize the sum: ensure the "secret bit" beyond the mantissa is 1
+        // add the implicit leading one on mantissas, unless Ae is 0
+        Am = if (Ae != 0) ? (Am | (1 << man_bits)) : Am;
+        Bm = if (Be != 0) ? (Bm | (1 << man_bits)) : Bm;
+
+        $display("A = %d, %d, %d", As, Ae, Am);
+        $display("B = %d, %d, %d", Bs, Be, Bm);
+
+        // Align mantissas
+
+        // check that the shifting would not = 0, skip if no need for shift
+        let diff      : u32 = Ae - Be;
+        let Bm_shifted: u32 = Bm >> diff;
+        var m_sum     : u32;
+        var e_sum     : i32;
+
+        ////////////////////////
+        // Sign/magnitude logic
+        ////////////////////////
+        // Determine addition or subtraction of mantissas
+        if (As == Bs) {
+            // same sign → add
+            $display("same sign, add");
+            $display("%d,%d", Am, Bm_shifted);
+            m_sum    = Am + Bm_shifted;
+            sum.s    = As;
+        } else {
+            // opposite signs → subtract
+            if (Am == Bm_shifted) {
+                $display("self - self = 0");
+                // same equalized mantissas
+                // -> +-0
+                sum.e = 0;
+                sum.m = 0;
+                return sum;
+            } else if (Am >: Bm_shifted) {
+                $display("diff signs, A is bigger");
+                m_sum    = Am - Bm_shifted;
+                sum.s    = As; // A had larger magnitude
+            } else {
+                $display("diff signs, B is bigger");
+                m_sum    = Bm_shifted - Am;
+                sum.s    = Bs; // B had larger magnitude
+            }
+        }
+        // Restore implied Exp offset
+        e_sum = Ae;
+
+        $display("output 1: %d, %d, %d", sum.s, e_sum, m_sum);
+
+
+
+
+        ////////////////////////
+        // rounding
+        ////////////////////////
+        let a       : u64   = (Bm as u64 << man_bits) >> diff; // shift up to preserve, then down
+        let gaurd   : logic = a[man_bits - 1];
+        let round   : logic = a[man_bits - 2];
+        let sticky  : logic = a[man_bits - 3:0] >: 0;
+        $display("g r s (%d%d%d)", gaurd, round, sticky);
+
+        if (gaurd) {
+            if (round || sticky || (m_sum & 1)) {
+                $display("rounding up");
+                m_sum    += 1;
+            }
+        }
+
+        ////////////////////////
+        // shifting / normalizing to the implicit binary point
+        ////////////////////////
+        // if mantissa too large (larger than the implicit 1+all mantissa bits)
+        if (m_sum >: ((1 << (man_bits + 1)) - 1)) {
+            $display("normalize once", m_sum);
+            // shift right, inc exponent
+            m_sum =  m_sum >> 1;
+            e_sum += 1;
+        } else {
+            // if mantissa too small, (no implicit one exists yet)
+            for i: i32 in 0..man_bits { //NOTE: while loop please
+                // m_sum less than the implicit leading one AND e_sum not abs min.
+                if (m_sum <: (1 << man_bits) && e_sum >: 0) {
+                    $display("normalize loop", m_sum);
+                    // mantissa too small, move up
+                    // shift left, dec exponent until done
+                    m_sum =  m_sum << 1;
+                    e_sum -= 1;
+                }
+            }
+        }
+
+
+        // correct for subnormal numbers - which DONT have an implicit one and may need it to be carried over
+        if (e_sum == 0 && m_sum[23] == 1) {
+            $display ("DUMB HACK TRIGGERED, BE CAREFUL");
+            e_sum     += 1;
+            m_sum[23] =  0;
+        }
+
+
+        // now we check that all the bits fit and other edge cases
+        if (e_sum >= (2 ** exp_bits) - 1) {
+            $display("overflow", sum);
+            sum.e    = 255;
+            sum.m    = 0;
+            return sum;
+        } else if (e_sum <: 0) {
+            //TODO:
+            $display("underflow", sum);
+            return 69.0 as fp_num;
+        }
+
+        // truncate and package
+        sum.m    = m_sum[man_bits - 1:0];
+        sum.e    = e_sum[exp_bits - 1:0];
+        $display("output fin: %d, %d, %d", sum.s, sum.e, sum.m);
+        return sum;
+    }
+}

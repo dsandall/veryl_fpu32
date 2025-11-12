@@ -1,7 +1,7 @@
 dependencies/
 target/
 Veryl.lock
-hello.f
+*.f
 
 .build/
 obj_dir/

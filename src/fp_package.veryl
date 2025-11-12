@@ -1,0 +1,42 @@
+package FPops {
+
+    import FPdefs::*;
+
+    function subtract (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        // flipped sign copy of Y
+        var Yy  : fp_num;
+        Yy   = Y;
+        Yy.s = ~Yy.s;
+        return Add::add(X, Yy);
+    }
+
+    function sqrt (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        //TODO:
+    }
+    function min (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        //TODO:
+        //edge cases in rv manual 20.5
+    }
+    function max (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        //TODO:
+        //edge cases in rv manual 20.5
+    }
+    function div (
+        X: input fp_num,
+        Y: input fp_num,
+    ) -> fp_num {
+        //TODO:
+    }
+}

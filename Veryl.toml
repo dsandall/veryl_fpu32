@@ -9,10 +9,19 @@ target = { type = "directory", path = "target" }
 simulator = "verilator"
 
 [test.verilator]
-#compile_args = [
-#  "-Wno-UNOPTFLAT",
-#  "-Wno-REALCVT",
-#  "-Wno-SHORTREAL",
-#  "-Wno-UNUSED",
-#  "-Wno-WIDTHEXPAND",
-#]
+compile_args = [
+  "-Wno-UNOPTFLAT",
+  "-Wno-REALCVT",
+  "-Wno-SHORTREAL",
+  "-Wno-UNUSED",
+  "-Wno-WIDTHEXPAND",
+  "-Wno-WIDTHTRUNC",
+]
+simulate_args = [
+  "-Wno-UNOPTFLAT",
+  "-Wno-REALCVT",
+  "-Wno-SHORTREAL",
+  "-Wno-UNUSED",
+  "-Wno-WIDTHEXPAND",
+  "-Wno-WIDTHTRUNC",
+]

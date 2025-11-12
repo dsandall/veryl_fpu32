@@ -4,9 +4,9 @@
 TOPLEVEL_LANG ?= verilog
 SIM ?= verilator
 
-EXTRA_ARGS += -Wno-UNOPTFLAT -Wno-REALCVT  -Wno-SHORTREAL -Wno-UNUSED -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC
+EXTRA_ARGS += -Wno-UNOPTFLAT -Wno-REALCVT  -Wno-SHORTREAL -Wno-UNUSED -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -f veryl_fpu.f
 
-VERILOG_SOURCES += $(PWD)/target/fpu.sv
+#VERILOG_SOURCES += $(PWD)/target/*.sv
 # use VHDL_SOURCES for VHDL files
 
 # COCOTB_TOPLEVEL is the name of the toplevel module in your Verilog or VHDL file
